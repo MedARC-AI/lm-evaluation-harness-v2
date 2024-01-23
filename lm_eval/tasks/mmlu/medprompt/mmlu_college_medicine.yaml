@@ -1,0 +1,4 @@
+task: mmlu_college_medicine_medprompt
+dataset_name: medarc/mmlu_college_medicine
+description: "Answer the following <<Question>> about Medicine.\nFirst, think step by step and write an <<Explanation>> for reasoning through the question.\nThen, analyze your explanation and write <<Final Answer>> followed by a single letter corresponding to one of the choices below.\n----\n"
+include: _default_medprompt_yaml

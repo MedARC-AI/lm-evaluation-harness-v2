@@ -7,22 +7,16 @@ np.random.seed(1992)
 LETTER_OPTIONS = ['A', 'B', 'C', 'D']
 
 
-def doc_to_text(doc) -> str:
-    option_choices = {'A': doc['ending0'], 'B': doc['ending1'], 'C': doc['ending2'], 'D': doc['ending3']}
-    answers = "".join((f'{k}. {v}\n') for k, v in option_choices.items())
-    return f"Question: {doc['sent1']}\n{answers}Answer:"
-
-
 def doc_to_target(doc) -> int:
-    return doc['label']
+    return doc['answer']
 
 
 def doc_to_choice(doc, return_letters=True):
-    return LETTER_OPTIONS if return_letters else [doc[f'ending{i}'] for i in range(len(LETTER_OPTIONS))]
+    return LETTER_OPTIONS if return_letters else doc['choices']
 
 
 def doc_to_text_medprompt(doc):
-    question = doc['sent1']
+    question = doc['question']
     text = f'<<Question:>> {question}\n----\n'
     return text
 
@@ -33,13 +27,13 @@ def doc_to_fewshot_text(doc):
     explanation_str = doc.get('rationale', '')
     if len(explanation_str) == 0:
         print('Warning. No CoT rationales have been pre-computed.')
-    choice_str = '\n'.join([f"{l}) {doc['ending' + str(i)]}" for i in range(len(LETTER_OPTIONS))])
+    choice_str = '\n'.join([f"{a}) {b}" for a, b in zip(LETTER_OPTIONS, doc['choices'])])
     text = f'<<Question:>> {question}\n----\n<<Choices:>>\n{choice_str}\n----\n<<Explanation:>> {explanation_str}\n----\n<<Final Answer:>>'
     return text
 
 
 def letter_target(doc):
-    return LETTER_OPTIONS[doc['label']]
+    return LETTER_OPTIONS[doc['answer']]
 
 
 def shuffled_choice_list(letters, options, shuffle=True):
@@ -70,5 +64,3 @@ def shuffled_choice_list(letters, options, shuffle=True):
 
     shuffled_str = '\n'.join([f'{l}) {c}' for l, c in zip(letters, options_shuffled)])
     return f'<<Choices:>>\n{shuffled_str}\n----\n<<Explanation:>>', unshuffle_answer_callback
-
-

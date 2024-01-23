@@ -265,10 +265,20 @@ class VLLM(LM):
         res = []
 
         # batch tokenize contexts
-        context, all_gen_kwargs = zip(*(req.args for req in requests))
-        context_encoding = self.tokenizer(context, add_special_tokens=False).input_ids
+        context = []
+        callbacks = []
+        all_gen_kwargs = [req.args[1] for req in requests]
+        for req in requests:
+            if req.shuffle_choices is None:
+                callbacks.append(None)
+                context.append(req.args[0])
+            else:
+                addl_input, unshuffle_answer_callback = req.shuffle_choices(*req.args[0][1:])
+                context.append(req.args[0][0] + addl_input)
+                callbacks.append(unshuffle_answer_callback)
+        context_encoding = self.tokenizer(context).input_ids
         requests = [
-            ((a, b), c) for a, b, c in zip(context, context_encoding, all_gen_kwargs)
+            ((a, b), c, d) for a, b, c, d in zip(context, context_encoding, all_gen_kwargs, callbacks)
         ]
 
         def _collate_gen(_requests):
@@ -291,7 +301,7 @@ class VLLM(LM):
         pbar = tqdm(total=len(requests), disable=(self.rank != 0))
         # for each different set of kwargs, we execute all requests, by batch.
         for chunk in chunks:
-            context_and_encoding, all_gen_kwargs = zip(*chunk)
+            context_and_encoding, all_gen_kwargs, callbacks = zip(*chunk)
             context, context_encoding = zip(*context_and_encoding)
             # we assume all gen kwargs in the batch are the same
             # this is safe to assume because the `grouper` object ensures it.
@@ -334,8 +344,10 @@ class VLLM(LM):
             )
 
             # cache generations
-            for output, context in zip(cont, context):
+            for output, context, callback in zip(cont, context, callbacks):
                 generated_text = output.outputs[0].text
+                if callback is not None:
+                    generated_text = callback(generated_text)
                 res.append(generated_text)
                 self.cache_hook.add_partial(
                     "generate_until", (context, gen_kwargs), generated_text

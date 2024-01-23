@@ -1,5 +1,13 @@
+import numpy as np
+
+from lm_eval.api.embeddings import get_embedding_instance
+
+
 class ContextSampler:
-    def __init__(self, docs, task, fewshot_indices=None, rnd=None) -> None:
+    def __init__(
+            self, docs, task, fewshot_indices=None, rnd=None,
+            fewshot_embedding_col=None, fewshot_embedding_model=None, fewshot_embedding_task_description=None
+        ) -> None:
         self.rnd = rnd
         assert self.rnd, "must pass rnd to FewShotSampler!"
 
@@ -9,9 +17,15 @@ class ContextSampler:
         self.target_delimiter = self.config.target_delimiter
         self.fewshot_delimiter = self.config.fewshot_delimiter
 
-        self.doc_to_text = self.task.doc_to_text
+        self.doc_to_fewshot_text = self.task.doc_to_fewshot_text
         self.doc_to_target = self.task.doc_to_target
         self.doc_to_choice = self.task.doc_to_choice
+
+        self.fewshot_embedder = None
+        if fewshot_embedding_col is not None:
+            self.fewshot_embedder = get_embedding_instance(fewshot_embedding_model)(
+                fewshot_embedding_col, fewshot_embedding_task_description
+            )
 
         self.docs = docs  # HF dataset split, provided by task._fewshot_docs()
         if fewshot_indices:  # subset few-shot docs from
@@ -26,7 +40,7 @@ class ContextSampler:
         )
 
         # draw `n_samples` docs from fewshot_docs
-        fewshotex = self.sample(n_samples)
+        fewshotex = self.sample(doc, n_samples)
 
         # get rid of the doc that's the one we're evaluating, if it's in the fewshot
         # TODO: should we just stop people from using fewshot from same split as evaluating?
@@ -35,14 +49,14 @@ class ContextSampler:
         labeled_examples = (
             self.fewshot_delimiter.join(
                 [
-                    # TODO: is separating doc_to_text and doc_to_target by one space always desired?
+                    # TODO: is separating doc_to_fewshot_text and doc_to_target by one space always desired?
                     (
-                        self.doc_to_text(doc)
+                        self.doc_to_fewshot_text(doc)
                         if (
                             self.config.doc_to_choice is None
-                            or isinstance(self.doc_to_text(doc), str)
+                            or isinstance(self.doc_to_fewshot_text(doc), str)
                         )
-                        else self.doc_to_choice(doc)[self.doc_to_text(doc)]
+                        else self.doc_to_choice(doc)[self.doc_to_fewshot_text(doc)]
                     )
                     + self.target_delimiter
                     + (
@@ -63,7 +77,7 @@ class ContextSampler:
 
         return labeled_examples
 
-    def sample(self, n):
+    def sample(self, doc, n):
         """
         Draw `n` samples from our fewshot docs. This method should be overridden by subclasses.
         """
@@ -72,7 +86,7 @@ class ContextSampler:
 
 
 class FirstNSampler(ContextSampler):
-    def sample(self, n) -> None:
+    def sample(self, doc, n) -> None:
         """
         Draw the first `n` samples in order from the specified split.
         Used for tasks with "canonical" ordered fewshot examples, such as MMLU and CMMLU.
@@ -84,7 +98,7 @@ class FirstNSampler(ContextSampler):
 
 
 class BalancedSampler(ContextSampler):
-    def sample(self, n) -> None:
+    def sample(self, doc, n) -> None:
         """
         TODO: this should return approximately class-balanced samples from our fewshot examples.
         TODO: what order should they be in? maybe random?
@@ -94,14 +108,41 @@ class BalancedSampler(ContextSampler):
 
 
 class ManualSampler(ContextSampler):
-    def sample(self, n) -> None:
+    def sample(self, doc, n) -> None:
         """ """
         pass
+
+
+class NearestNeighborsSampler(ContextSampler):
+    def cosine_similarity(self, embed, fewshot_embeds):
+        """Calculate the cosine similarity between two vectors."""
+        dot_product = np.dot(embed, fewshot_embeds.transpose(1, 0))
+        norm_v1 = np.linalg.norm(embed)
+        norm_v2 = np.linalg.norm(fewshot_embeds)
+        return dot_product / (norm_v1 * norm_v2)
+
+    def sample(self, doc, n) -> None:
+        """
+        Dynamic retrieval-based fewshot selection.
+        Use the embedding `n` samples in order from the specified split.
+        """
+        assert n <= len(
+            self.docs
+        ), f"Error: number of fewshot samples requested exceeds the {len(self.docs)} that are available."
+
+        q_embed = self.fewshot_embedder(doc)
+
+        fewshot_embeds = np.array(list(map(lambda doc: self.fewshot_embedder(doc), self.docs)))
+
+        sims = self.cosine_similarity(q_embed, fewshot_embeds)
+        top_indices = np.argsort(-sims)[:n]
+        return list(map(lambda idx: self.docs[idx], top_indices))
 
 
 SAMPLER_REGISTRY = {
     "default": ContextSampler,
     "first_n": FirstNSampler,
+    "nearest_neighbors": NearestNeighborsSampler,
 }
 
 

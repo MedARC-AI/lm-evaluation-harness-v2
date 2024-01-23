@@ -62,8 +62,10 @@ class TaskConfig(dict):
     # see docs/advanced_task_guide.md for more info
     process_docs: Callable = None
     doc_to_text: Union[Callable, str] = None
+    doc_to_fewshot_text: Union[Callable, str] = None
     doc_to_target: Union[Callable, str] = None
     doc_to_choice: Union[Callable, str, dict, list] = None
+    shuffle_choices: bool = False
     process_results: Union[Callable, str] = None
     use_prompt: str = None
     description: str = ""
@@ -109,6 +111,9 @@ class TaskConfig(dict):
                     else [self.fewshot_delimiter],
                     "do_sample": False,
                 }
+        
+        # If not set, assume the fewshot template should be the same as doc_to_text
+        self.doc_to_fewshot_text = self.doc_to_fewshot_text or self.doc_to_text
 
         # TODO: how to make TaskConfigs be de- and re-serializable, even when using the !function constructor?
 
@@ -353,7 +358,7 @@ class Task(abc.ABC):
             inst = self.construct_requests(
                 doc=doc,
                 ctx=fewshot_ctx,
-                metadata=(self.config["task"], doc_id, self.config.repeats),
+                metadata=(self.config["task"], doc_id, self.config.repeats, self.config.shuffle_choices),
             )
 
             if not isinstance(inst, list):
@@ -477,7 +482,7 @@ class Task(abc.ABC):
             labeled_examples = (
                 "\n\n".join(
                     [
-                        self.doc_to_text(doc) + self.doc_to_target(doc)
+                        self.doc_to_fewshot_text(doc) + self.doc_to_target(doc)
                         for doc in fewshotex
                     ]
                 )
@@ -653,7 +658,11 @@ class ConfigurableTask(Task):
                 self.config.fewshot_config.get("sampler", "default")
                 if self.config.fewshot_config
                 else "default"
-            )(list(self.fewshot_docs()), self, rnd=random.Random(1234))
+            )(list(self.fewshot_docs()), self, rnd=random.Random(1234),
+              fewshot_embedding_col=None if self.config.fewshot_config is None else self.config.fewshot_config.get("fewshot_embedding_col", None),
+              fewshot_embedding_model=None if self.config.fewshot_config is None else self.config.fewshot_config.get("fewshot_embedding_model", None),
+              fewshot_embedding_task_description=None if self.config.fewshot_config is None else self.config.fewshot_config.get("fewshot_embedding_task_description", None),
+            )
 
         if self.has_test_docs():
             self.task_docs = self.test_docs()
@@ -883,6 +892,37 @@ class ConfigurableTask(Task):
             print(type(doc_to_text))
             raise TypeError
 
+    def doc_to_fewshot_text(self, doc):
+        if self.prompt is not None:
+            doc_to_fewshot_text = self.prompt
+        else:
+            doc_to_fewshot_text = self.config.doc_to_fewshot_text
+
+        if isinstance(doc_to_fewshot_text, int):
+            return doc_to_fewshot_text
+        elif isinstance(doc_to_fewshot_text, str):
+            if doc_to_fewshot_text in self.features:
+                return doc[doc_to_fewshot_text]
+            else:
+                text_string = utils.apply_template(doc_to_fewshot_text, doc)
+                if text_string.isdigit() and self._config.doc_to_choice is not None:
+                    return ast.literal_eval(text_string)
+                else:
+                    return text_string
+        elif callable(doc_to_fewshot_text):
+            return doc_to_fewshot_text(doc)
+        # Used when applying a Promptsource template
+        elif hasattr(doc_to_fewshot_text, "apply"):
+            applied_prompt = doc_to_fewshot_text.apply(doc)
+            if len(applied_prompt) == 2:
+                return applied_prompt[0]
+            else:
+                eval_logger.warning("Applied prompt returns empty string")
+                return self.config.fewshot_delimiter
+        else:
+            print(type(doc_to_fewshot_text))
+            raise TypeError
+
     def doc_to_target(self, doc: dict) -> Union[int, str, list]:
         if self.prompt is not None:
             doc_to_target = self.prompt
@@ -927,7 +967,7 @@ class ConfigurableTask(Task):
         else:
             raise TypeError
 
-    def doc_to_choice(self, doc: Any) -> List[str]:
+    def doc_to_choice(self, doc: Any, return_letters=False) -> List[str]:
         if self.prompt is not None:
             doc_to_choice = self.prompt
         elif self.config.doc_to_choice is None:
@@ -945,7 +985,7 @@ class ConfigurableTask(Task):
         elif isinstance(doc_to_choice, dict):
             return list(doc_to_choice.values())
         elif callable(doc_to_choice):
-            return doc_to_choice(doc)
+            return doc_to_choice(doc, return_letters)
         elif hasattr(doc_to_choice, "get_answer_choices_list"):
             return doc_to_choice.get_answer_choices_list(doc)
         else:
@@ -1004,7 +1044,13 @@ class ConfigurableTask(Task):
             return request_list
 
         elif self.OUTPUT_TYPE == "generate_until":
-            arguments = (ctx, self.config.generation_kwargs)
+            if self.config.shuffle_choices is None:
+                arguments = (ctx, self.config.generation_kwargs)
+            else:
+                # The generate function will need access to both the letter choices and respective options
+                # Pack them all into the first argument which will be unpacked in the generate until file
+                first_arg = ctx, self.doc_to_choice(doc, True), self.doc_to_choice(doc, False)
+                arguments = (first_arg, self.config.generation_kwargs)
 
         return Instance(
             request_type=self.OUTPUT_TYPE, doc=doc, arguments=arguments, idx=0, **kwargs
@@ -1118,7 +1164,7 @@ class ConfigurableTask(Task):
         elif self.OUTPUT_TYPE == "generate_until":
             gold = self.doc_to_target(doc)
             result = results[0]
-            if self.config.doc_to_choice is not None:
+            if self.config.doc_to_choice is not None and (type(gold) == int or gold.isnumeric()):
                 # If you set doc_to_choice,
                 # it assumes that doc_to_target returns a number.
                 choices = self.doc_to_choice(doc)

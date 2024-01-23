@@ -1065,13 +1065,23 @@ class HFLM(LM):
             else None
         )
 
+        # Potentially need to shuffle answer choices and add to the argument list if req.shuffles not None.
+        updated_args = []
+        for req in requests:
+            if req.shuffle_choices is None:
+                new_args = (req.args[0], req.args[1], None)
+            else:
+                addl_input, unshuffle_answer_callback = req.shuffle_choices(*req.args[0][1:])
+                new_args = (req.args[0][0] + addl_input, req.args[1], unshuffle_answer_callback)
+            updated_args.append(new_args)
+        
         # we group requests by their generation_kwargs,
         # so that we don't try to execute e.g. greedy sampling and temp=0.8 sampling
         # in the same batch.
-        re_ords = Collator([reg.args for reg in requests], _collate, grouping=True)
+        re_ords = Collator(updated_args, _collate, grouping=True)
         chunks = re_ords.get_batched(n=batch_size, batch_fn=batch_fn)
         for chunk in chunks:
-            contexts, all_gen_kwargs = zip(*chunk)
+            contexts, all_gen_kwargs, callbacks = zip(*chunk)
             # we assume all gen kwargs in the batch are the same
             # this is safe to assume because the `grouper` object ensures it.
             gen_kwargs = all_gen_kwargs[0]
@@ -1127,7 +1137,7 @@ class HFLM(LM):
             )
 
             cont_toks_list = cont.tolist()
-            for cont_toks, context in zip(cont_toks_list, contexts):
+            for cont_toks, context, callback in zip(cont_toks_list, contexts, callbacks):
                 # discard context + left-padding toks if using causal decoder-only LM
                 if self.AUTO_MODEL_CLASS == transformers.AutoModelForCausalLM:
                     cont_toks = cont_toks[context_enc.shape[1] :]
@@ -1140,6 +1150,9 @@ class HFLM(LM):
                         # ignore '' separator,
                         # for seq2seq case where self.tok_decode(self.eot_token_id) = ''
                         s = s.split(term)[0]
+
+                if callback is not None:
+                    s = callback(s)
 
                 res.append(s)
 

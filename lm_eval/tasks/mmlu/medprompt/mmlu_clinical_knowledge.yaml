@@ -1,0 +1,4 @@
+task: mmlu_clinical_knowledge_medprompt
+dataset_name: medarc/mmlu_clinical_knowledge
+description: "Answer the following <<Question>> about Clinical Knowledge.\nFirst, think step by step and write an <<Explanation>> for reasoning through the question.\nThen, analyze your explanation and write <<Final Answer>> followed by a single letter corresponding to one of the choices below.\n----\n"
+include: _default_medprompt_yaml
