@@ -62,7 +62,8 @@ def shuffled_choice_list(letters, options, shuffle=True):
                 literal_pattern = r'<{0,2}Final Answer:?>{0,2}:?\s?(' + option_str + ')'
                 match = re.search(literal_pattern, output, flags=re.IGNORECASE)
                 if match is None:
-                    raise Exception(f'Answer Not Found! Check output below.\n{output}')
+                    print(f'Answer Not Found! Check output below.\n{output}. Returning [invalid].')
+                    return '[invalid]'
                 else:
                     option_idx = options.index(match.group(1).strip())
                     return output[:match.start()] + '<<Final Answer:>> ' + letters[option_idx]

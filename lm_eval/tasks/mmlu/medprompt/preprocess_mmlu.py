@@ -22,7 +22,7 @@ def doc_to_text_medprompt(doc):
 
 
 def doc_to_fewshot_text(doc):
-    question = doc['sent1']
+    question = doc['question']
     # Include rationale if in dataset (this means either that it was pre-computed or is part of fewshot context)
     explanation_str = doc.get('rationale', '')
     if len(explanation_str) == 0:
@@ -56,7 +56,8 @@ def shuffled_choice_list(letters, options, shuffle=True):
                 literal_pattern = r'<{0,2}Final Answer:?>{0,2}:?\s?(' + option_str + ')'
                 match = re.search(literal_pattern, output, flags=re.IGNORECASE)
                 if match is None:
-                    raise Exception(f'Answer Not Found! Check output below.\n{output}')
+                    print(f'Answer Not Found! Check output below.\n{output}. Returning [invalid].')
+                    return '[invalid]'
                 else:
                     option_idx = options.index(match.group(1).strip())
                     return output[:match.start()] + '<<Final Answer:>> ' + letters[option_idx]

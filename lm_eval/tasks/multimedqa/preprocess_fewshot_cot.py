@@ -28,12 +28,12 @@ CotConfigs = {
     'pubmedqa_medprompt': CotConfig(name='pubmedqa', input_type='abstract', contexts_col='CONTEXTS', question_col='QUESTION'),
     'medmcqa_medprompt': CotConfig(name='medmcqa', question_col='question'),
     'medqa_medprompt': CotConfig(name='medqa', question_col='sent1'),
-    'mmlu_anatomy': CotConfig(name='mmlu_anatomy', question_col='question'),
-    'mmlu_clinical_knowledge': CotConfig(name='mmlu_clinical_knowledge', question_col='question'),
-    'mmlu_college_biology': CotConfig(name='mmlu_college_biology', question_col='question'),
-    'mmlu_college_medicine': CotConfig(name='mmlu_college_medicine', question_col='question'),
-    'mmlu_medical_genetics': CotConfig(name='mmlu_medical_genetics', question_col='question'),
-    'mmlu_professional_medicine': CotConfig(name='mmlu_professional_medicine', question_col='question'),
+    'mmlu_anatomy_medprompt': CotConfig(name='mmlu_anatomy', question_col='question'),
+    'mmlu_clinical_knowledge_medprompt': CotConfig(name='mmlu_clinical_knowledge', question_col='question'),
+    'mmlu_college_biology_medprompt': CotConfig(name='mmlu_college_biology', question_col='question'),
+    'mmlu_college_medicine_medprompt': CotConfig(name='mmlu_college_medicine', question_col='question'),
+    'mmlu_medical_genetics_medprompt': CotConfig(name='mmlu_medical_genetics', question_col='question'),
+    'mmlu_professional_medicine_medprompt': CotConfig(name='mmlu_professional_medicine', question_col='question'),
 }
 
 
@@ -121,7 +121,7 @@ def build_prompt(doc, task, cot_config):
         )
     else:
         assert 'mmlu' in cot_config.name
-        choice_options = [doc[l] for l in choice_letters]
+        choice_options = doc['choices']
 
         choice_str = []
         for l, o in zip(choice_letters, choice_options):
@@ -152,8 +152,6 @@ def generate_self_cot(doc, task, cot_config, lm_obj, embedding_model, add_self_c
         return new_cols
 
     prompt = build_prompt(doc, task, cot_config)
-
-    print(prompt)
 
     # Empty gen config for now
     args = (prompt, {})
@@ -240,6 +238,7 @@ if __name__ == '__main__':
     args.save_dir = f'~/.cache/huggingface/datasets/{args.task}_{args.cot_model}_preprocessed'
     args.hub_dir = f'medarc/{args.task}_{args.cot_model}_preprocessed'
 
+    print('Initializing tasks...')
     lm_eval.tasks.initialize_tasks()
 
     # Get Task object

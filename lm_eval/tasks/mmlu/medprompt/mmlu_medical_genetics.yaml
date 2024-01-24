@@ -1,4 +1,4 @@
 task: mmlu_medical_genetics_medprompt
-dataset_name: medarc/mmlu_medical_genetics
+dataset_path: medarc/mmlu_medical_genetics
 description: "Answer the following <<Question>> about Genetics.\nFirst, think step by step and write an <<Explanation>> for reasoning through the question.\nThen, analyze your explanation and write <<Final Answer>> followed by a single letter corresponding to one of the choices below.\n----\n"
 include: _default_medprompt_yaml
