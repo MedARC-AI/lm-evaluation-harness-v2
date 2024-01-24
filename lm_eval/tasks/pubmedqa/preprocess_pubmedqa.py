@@ -35,7 +35,7 @@ def shuffled_choice_list(letters, options, shuffle=True):
         pattern = r'<{0,2}Final Answer:?>{0,2}:?\s?([A-C])'
         match = re.search(pattern, output, flags=re.IGNORECASE)
         if match is None:
-            pattern = r'(?:answer )?is\W*([A-D])'
+            pattern = r'(?:answer )?is\W*([A-C])'
             match = re.search(pattern, output, flags=re.IGNORECASE)
             if match is None:
                 option_str = '|'.join(list(map(re.escape, options)))
