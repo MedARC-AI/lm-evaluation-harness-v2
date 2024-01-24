@@ -1,4 +1,4 @@
 task: mmlu_college_biology_medprompt
-dataset_path: medarc/mmlu_college_biology
+dataset_path: medarc/mmlu_college_biology_medprompt_gpt-4_preprocessed
 description: "Answer the following <<Question>> about Biology.\nFirst, think step by step and write an <<Explanation>> for reasoning through the question.\nThen, analyze your explanation and write <<Final Answer>> followed by a single letter corresponding to one of the choices below.\n----\n"
 include: _default_medprompt_yaml
