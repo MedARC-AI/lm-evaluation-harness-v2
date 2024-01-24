@@ -1,10 +1,10 @@
 task: pubmedqa_medprompt
 dataset_path: medarc/pubmedqa_medprompt_gpt-4_preprocessed
 output_type: generate_until
-training_split: train
+training_split: training
 validation_split: validation
 test_split: test
-fewshot_split: train
+fewshot_split: training
 num_fewshot: 5
 fewshot_config:
   sampler: nearest_neighbors
