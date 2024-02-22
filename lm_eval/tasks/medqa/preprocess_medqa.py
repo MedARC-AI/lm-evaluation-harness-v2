@@ -33,7 +33,7 @@ def doc_to_fewshot_text(doc):
     explanation_str = doc.get('rationale', '')
     if len(explanation_str) == 0:
         print('Warning. No CoT rationales have been pre-computed.')
-    choice_str = '\n'.join([f"{l}) {doc['ending' + str(i)]}" for i in range(len(LETTER_OPTIONS))])
+    choice_str = '\n'.join([f"{LETTER_OPTIONS[i]}) {doc['ending' + str(i)]}" for i in range(len(LETTER_OPTIONS))])
     text = f'<<Question:>> {question}\n----\n<<Choices:>>\n{choice_str}\n----\n<<Explanation:>> {explanation_str}\n----\n<<Final Answer:>>'
     return text
 
@@ -71,5 +71,3 @@ def shuffled_choice_list(letters, options, shuffle=True):
 
     shuffled_str = '\n'.join([f'{l}) {c}' for l, c in zip(letters, options_shuffled)])
     return f'<<Choices:>>\n{shuffled_str}\n----\n<<Explanation:>>', unshuffle_answer_callback
-
-

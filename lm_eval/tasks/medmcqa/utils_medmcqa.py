@@ -80,4 +80,3 @@ def shuffled_choice_list(letters, options, shuffle=True):
 
     shuffled_str = '\n'.join([f'{l}) {c}' for l, c in zip(letters, options_shuffled)])
     return f'<<Choices:>>\n{shuffled_str}\n----\n<<Explanation:>>', unshuffle_answer_callback
-

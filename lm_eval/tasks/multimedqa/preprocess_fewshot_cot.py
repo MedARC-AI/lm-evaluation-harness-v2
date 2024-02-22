@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import json
 import os
 
 import argparse
@@ -133,7 +134,7 @@ def build_prompt(doc, task, cot_config):
         Answer the following reading comprehension **Question**.
         First, think step by step and write an **Explanation** for reasoning through the question.
         Then, analyze your explanation and write just the Letter ({choice_letter_str}) corresponding to your **Final Answer**.
-        ----s
+        ----
         **Question:** {question}
         ----
         **Choices:**\n{choice_str}\n
@@ -145,11 +146,21 @@ def build_prompt(doc, task, cot_config):
 
     return prompt
 
-def generate_self_cot(doc, task, cot_config, lm_obj, embedding_model, add_self_cot=True, consistency_filter=True):
+def generate_self_cot(args, doc, task, cot_config, lm_obj, embedding_model, add_self_cot=True, consistency_filter=True):
     q_embed = embedding_model(doc)
     new_cols = {f'{cot_config.question_col}_embed': q_embed, 'rationale': ''}
     if not add_self_cot:  # We don't pre-compute CoT for every split. Only "fewshot_split"
         return new_cols
+
+    idx = doc['fewshot_idx']
+    task_name = task.config.task
+    cache_dir = os.path.join('cache', task_name)
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_fn = os.path.join(cache_dir, f'{idx}.json')
+
+    if os.path.exists(cache_fn) and not args.overwrite:
+        with open(cache_fn, 'r') as fd:
+            return json.load(fd)
 
     prompt = build_prompt(doc, task, cot_config)
 
@@ -200,7 +211,6 @@ def generate_self_cot(doc, task, cot_config, lm_obj, embedding_model, add_self_c
     answer_lower = answer_match.group().lower()
     target = task.doc_to_target(doc)
 
-
     if type(target) == int:
         target = letters[target]
     
@@ -209,9 +219,11 @@ def generate_self_cot(doc, task, cot_config, lm_obj, embedding_model, add_self_c
 
     if consistency_filter and answer_lower != target_lower:
         print(f'Answer ({answer_lower}) didn\'t match ground truth target ({target_lower}). Not adding to CoT dataset.')
-        return new_cols
-
-    new_cols.update({'rationale': rationale})
+    else:
+        new_cols.update({'rationale': rationale})
+    
+    with open(cache_fn, 'w') as fd:
+        json.dump(new_cols, fd)
 
     return new_cols
 
@@ -229,6 +241,8 @@ if __name__ == '__main__':
     parser.add_argument('--cot_model', default='gpt-4')
     parser.add_argument('--cot_model_type', default='openai', choices=['openai', 'huggingface'])
     parser.add_argument('-remove_consistency_filter', default=False, action='store_true')
+
+    parser.add_argument('-overwrite', action='store_true', default=False)
 
     args = parser.parse_args()
 
@@ -258,8 +272,9 @@ if __name__ == '__main__':
         assert getattr(task, f'has_{split}_docs')()
         cot_data = getattr(task, f'{split}_docs')()
         n = len(cot_data)
+        data_idxs = np.arange(n)
+        cot_data = cot_data.add_column('fewshot_idx', data_idxs)
         if add_self_cot and args.max_cot_examples < n:
-            data_idxs = np.arange(n)
             np.random.shuffle(data_idxs)
             sample_idxs = data_idxs[:args.max_cot_examples]
             # TODO: Can shuffle first for randomization but this is just for debugging purposes
@@ -283,7 +298,7 @@ if __name__ == '__main__':
 
         cot_data_w_cot = cot_data.map(
             lambda doc: generate_self_cot(
-                doc, task, cot_config, lm_obj, embedding_model, add_self_cot=add_self_cot,
+                args, doc, task, cot_config, lm_obj, embedding_model, add_self_cot=add_self_cot,
                 consistency_filter=not args.remove_consistency_filter
             )
         )

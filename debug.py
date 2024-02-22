@@ -11,9 +11,11 @@ DEBUG_MODEL = 'HuggingFaceM4/tiny-random-LlamaForCausalLM'
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Debug for MedPrompt')
 
-    parser.add_argument('--model', default='mistralai/Mistral-7B-Instruct-v0.2')
-    parser.add_argument('--max_examples', default=3, type=int)
+    parser.add_argument('--model', default='01-ai/Yi-34B')
+    parser.add_argument('--task', default='medmcqa_medprompt')
+    parser.add_argument('--max_examples', default=10, type=int)
     parser.add_argument('--fewshot_override', default=None, type=int)
+    parser.add_argument('-use_hf', default=False, action='store_true')
 
     args = parser.parse_args()
 
@@ -21,11 +23,11 @@ if __name__ == '__main__':
         args.model = DEBUG_MODEL
 
     print('Initializing model...')
-    lm_obj = HFLM(
-        pretrained=args.model,
-        device='cuda',
-        batch_size=1,
-    )
+
+    if args.use_hf:
+        lm_obj = HFLM(pretrained=args.model, device='cuda', batch_size=1)
+    else:
+        lm_obj = VLLM(pretrained=args.model, device='cuda', batch_size=1)
 
     print('Initializing tasks...')
     lm_eval.tasks.initialize_tasks()
@@ -35,7 +37,7 @@ if __name__ == '__main__':
         model=lm_obj,
         limit=args.max_examples,
         num_fewshot=args.fewshot_override,
-        tasks=['medmcqa_medprompt'],
+        tasks=[args.task],
     )
 
     for task, metrics in results['results'].items():
